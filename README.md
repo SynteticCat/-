@@ -6,4 +6,4 @@
 
 ### Материалы к РК1 
 - https://github.com/Winterpuma/bmstu_DB/tree/master/rk1
-- в папке Подготовка к РК1
+- в репозитории в отдельной папке
