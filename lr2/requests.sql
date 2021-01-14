@@ -14,6 +14,11 @@ where salary between 50000 and 100000
 select * from vacancies
 where company like 'ООО%'
 
+where name like 'Земля'
+where name in ('Земля', 'Марс')
+
+where name like '%e%'
+
 --4. Инструкция SELECT, использующая предикат IN с вложенным подзапросом. 
 
 select * from vacancies
@@ -22,20 +27,25 @@ where company in
 where income > 1000000)
 
 --5. Инструкция SELECT, использующая предикат EXISTS с вложенным подзапросом.
+-- все вакансии с id, которые есть в списке контрактов
+-- если подзапрос содержить любое количество строкб  EXISTS вернет TRUE
 
 select * from vacancies
 where exists 
 (select * from contracts
-where contracts.vacancy_id = vacancies.id)
+where contracts.vacancy_id = vacancies.id) 
 
 --6. Инструкция SELECT, использующая предикат сравнения с квантором.
+-- оператор вернет TRUE если какое либо значение подзапроса соответсвует условию
+-- вывести все вакансии с зарплатой больше зарплаты по Москве
 
 select * from vacancies
 where salary > ALL
 (select salary from vacancies
 where city = 'Москва')
 
---7. Инструкция SELECT, использующая агрегатные функции в выражениях столбцов.
+--7. Инструкция SELECT, использующая агрегатные функции в выражениях столбцов
+-- COUNT подсчитает количество записей по конкретному значению атрибута
 
 select job_title, count(job_title) from vacancies
 group by job_title
@@ -51,6 +61,8 @@ where salary = (select max(salary) from vacancies)
 select job_title, company,
 case city
 when 'Москва' then 'Moscow'
+when 'Минск' then 'Minsk'
+when 'Екатеринбург' then 'Yekaterinburg'
 else ''
 end city
 from vacancies
@@ -60,12 +72,15 @@ from vacancies
 select job_title, company,
 case 
 when city = 'Москва' then 'Moscow'
+when city = 'Минск' then 'Minsk'
+when city = 'Екатеринбург' then 'Yekaterinburg'
 else ''
 end city
 from vacancies
 
 --11. Создание новой временной локальной таблицы из результирующего набора
 --данных инструкции SELECT.
+-- SELECT INTO создает новую локальную таблицу на основе старой
 
 select *
 into moscow_vacancies from vacancies
@@ -75,24 +90,25 @@ select * from moscow_vacancies
 
 --12. Инструкция SELECT, использующая вложенные коррелированные подзапросы 
 --в качестве производных таблиц в предложении FROM.
+-- В таких запросах внутренний запрос зависит от внешнего запроса
+-- получение строки кандидата от родителя => выполнение действий с ней => исключение или включение строки кандидата и т.д.
 
-select * from (select job_title, company, 
-(select income from companies
-where vacancies.company = companies.company_name) as company_income
-from vacancies) as company_prize
-where company_income > 1000000 
+SELECT job_title, company, salary FROM vacancies as v_outer
+WHERE salary > (
+	SELECT AVG(salary) FROM vacancies
+	WHERE company = v_outer.company)
 
 --13. Инструкция SELECT, использующая вложенные подзапросы с уровнем
 --вложенности 3.
 
-select name, job_title, company, agreed_salary
-from employers
-	join (select * from contracts
-		 join (select * from vacancies
-			  where company in (select company_name from companies
-							  where company like 'ООО%')
-			  ) as top_company
-on contracts.vacancy_id = top_company.id) as employer_vacancy
+select name, job_title, company, agreed_salary from employers
+join (select * from contracts
+      join (select * from vacancies
+            where company in (select company_name from companies
+			      where company like 'ООО%')
+	   ) as top_company
+      on contracts.vacancy_id = top_company.id
+     ) as employer_vacancy
 on employers.id = employer_vacancy.employer_id
 
 --14. Инструкция SELECT, консолидирующая данные с помощью предложения
@@ -120,11 +136,13 @@ values ('ООО Фирма', 2020, 1000000000);
 select * from companies
 
 --17. Многострочная инструкция INSERT, выполняющая вставку в таблицу
---результирующего набора данных вложенного подзапроса.
+-- результирующего набора данных вложенного подзапроса.
 
 insert into companies
-values ('ООО max income', 2020, (select max(income) from companies)),
-('ООО Супер Фирма', 2020, 10000000);
+values 
+('ООО max income', 2020, (select max(income) from companies)),
+('ООО Супер Фирма', 2020, 10000000),
+('ООО Мега Фирма', 2019, 2300000);
 
 select * from companies
 
@@ -156,22 +174,20 @@ select * from companies
 
 delete from contracts 
 where vacancy_id in (
-select job_title, cs.player_id from contracts as cs
-join vacancies as c1
-on cs.vacancy_id = c1.id
-where salary > 100000)
+	select job_title, cs.player_id from contracts as cs
+	join vacancies as c1 on cs.vacancy_id = c1.id
+	where salary > 100000)
 
 --22. Инструкция SELECT, использующая простое обобщенное табличное
---выражение
+-- выражение (ОТВ)
 
-WITH CTE 
-AS
-(SELECT * FROM vacancies)
+WITH CTE AS (SELECT * FROM vacancies)
 
 SELECT * FROM CTE
 
 --23. Инструкция SELECT, использующая рекурсивное обобщенное табличное
 --выражение.
+-- рекурсия - это способ иерархического представления данных табличной модели
 
 CREATE TABLE vacancies_substitute
 (
@@ -181,6 +197,7 @@ CREATE TABLE vacancies_substitute
 	substitute_for bigint NULL
 );
 
+// корневой элемент со значением substitute_for = NULL
 INSERT INTO vacancies_substitute (job_title, city, substitute_for)
 VALUES ('President', 'Moscow', NULL);
 
@@ -202,19 +219,20 @@ VALUES ('Programmist', 'Moscow', 3);
 INSERT INTO vacancies_substitute (job_title, city, substitute_for)
 VALUES ('Footboler', 'Moscow', 6);
 
-with recursive recCTE(id, job_title, city, substite_for, rotation_level)
-as
-(
-select id, job_title, city, substitute_for, 0 as rotation_level
-from vacancies_substitute where substitute_for is null
-union all
-select vs.id, vs.job_title, vs.city, vs.substitute_for, rotation_level + 1
-from vacancies_substitute as vs join recCTE as rc on vs.substitute_for = rc.id
+WITH RECURSIVE recCTE(id, job_title, city, substite_for, rotation_level) AS (
+	-- выполняется 1 раз, определяет якорь рекурсии, накапливает результат рекурсии
+	SELECT id, job_title, city, substitute_for, 0 AS rotation_level FROM vacancies_substitute WHERE substitute_for IS NULL
+	UNION ALL
+	-- содержит ссылку на ОТВ
+	SELECT vs.id, vs.job_title, vs.city, vs.substitute_for, rotation_level + 1 FROM vacancies_substitute AS vs 
+	JOIN recCTE AS rc ON vs.substitute_for = rc.id
 )
 
-select * from recCTE order by rotation_level
+SELECT * FROM recCTE 
+ORDER BY rotation_level;
 
 --24. Оконные функции. Использование конструкций MIN/MAX/AVG OVER()
+-- отличается от GROUP BY тем, что не уменьшает количество исходных записей таблицы
 
 select job_title, city, 
 min(salary) over(partition by city) as "min",
@@ -238,60 +256,14 @@ VALUES ('Programmist', 'Moscow', 500000),
 ('Glavar', 'St.Petersburg', 200000),
 ('Engeneer', 'Moscow', 300000);
 
+// формируем cte и выставляем row_number для одинаковых записей
 with cte
 as
 (select id, job_title, city, salary,
 row_number() over(partition BY job_title, city, salary) AS row_number
 FROM overlapping)
  
+// удалить дубли, т.е. записи с row_number > 1
 delete from overlapping
 where id in (select id from cte
 where row_number > 1)
-
-/*
-Дополнительное задание на дополнительные баллы
-Создать таблицы:
-• Table1{id: integer, var1: string, valid_from_dttm: date, valid_to_dttm: date}
-• Table2{id: integer, var2: string, valid_from_dttm: date, valid_to_dttm: date}
-Версионность в таблицах непрерывная, разрывов нет (если valid_to_dttm = '2018-09-05', то
-для следующей строки соответсвующего ID valid_from_dttm = '2018-09-06', т.е. на день
-больше). Для каждого ID дата начала версионности и дата конца версионности в Table1 и
-Table2 совпадают.
-Выполнить версионное соединение двух талиц по полю id.
-*/
-
-CREATE TABLE first(
-  id INTEGER,
-  var1 CHAR,
-  from_dttm DATE,
-  to_dttm DATE
-);
-
-CREATE TABLE second(
-  id INTEGER,
-  var2 CHAR,
-  from_dttm DATE,
-  to_dttm DATE
-);
-
-INSERT INTO first (id, var1, from_dttm, to_dttm) 
-VALUES(1, 'A', '2018-09-01', '2018-09-15');
-INSERT INTO first (id, var1, from_dttm, to_dttm) 
-VALUES(1, 'B', '2018-09-16', '5999-12-31');
-INSERT INTO second (id, var2, from_dttm, to_dttm) 
-VALUES(1, 'A', '2018-09-01', '2018-09-14');
-INSERT INTO second (id, var2, from_dttm, to_dttm) 
-VALUES(1, 'B', '2018-09-15', '5999-12-31');
-
-select * from 
-(
-    select first.id as id, first.var1 as var1, second.var2 as var2,
-        case when first.from_dttm >= second.from_dttm then first.from_dttm
-            else second.from_dttm 
-        end as from_dttm,
-        case when first.to_dttm <= second.to_dttm then first.to_dttm
-            else second.to_dttm
-        end as to_dttm
-    from first left join second on first.id = second.id
-) as res
-where to_dttm >= from_dttm
